@@ -1,6 +1,7 @@
 /**
- * DCM 资源管家 - 极致性能 16TB 优化版
- * 实现分批渲染与实时统计反馈，确保极度流畅的用户体验
+ * DCM 资源管家 - 增强版逻辑
+ * 1. 修复日期筛选（包含首尾、支持单日筛选）
+ * 2. 新增导出功能
  */
 
 const selectFolderBtn = document.getElementById('select-folder-btn');
@@ -8,83 +9,108 @@ const resultsList = document.getElementById('results-list');
 const dateStartInput = document.getElementById('date-start');
 const dateEndInput = document.getElementById('date-end');
 const clearBtn = document.getElementById('clear-btn');
+const exportBtn = document.getElementById('export-btn');
 const statsPanel = document.getElementById('stats');
 const countTotalSpan = document.getElementById('count-total');
 const countMatchSpan = document.getElementById('count-match');
 const scanProgress = document.getElementById('scan-progress');
 
-let allFiles = []; // 大列表存储所有 DCM 元数据
-let totalScannedCount = 0;
+let allFiles = []; // 原始数据池
+let currentFilteredFiles = []; // 经过日期筛选后的数据
 
 selectFolderBtn.addEventListener('click', async () => {
     try {
         const folderPath = await window.electronAPI.selectFolder();
         if (!folderPath) return;
-
-        // 1. 初始化 UI
         resetUI();
         statsPanel.style.display = 'block';
-
-        // 2. 发起异步扫描
-        console.log('正在开启大规模扫描流程...', folderPath);
         window.electronAPI.startScan(folderPath);
-
-    } catch (err) {
-        console.error('选择目录出错:', err);
-    }
+    } catch (err) { console.error(err); }
 });
 
-// 核心优化：监听分批数据
+// 监听扫描
 window.electronAPI.onScanResultsBatch((batch) => {
-    // 增加数据到内存池
     allFiles.push(...batch);
-
-    // 实时更新统计
-    countMatchSpan.textContent = allFiles.length;
-
-    // 只渲染部分结果，避免 DOM 过载 (如果超过1000个，我们建议限制初次渲染或使用虚拟滚动)
-    // 这里的策略是：按时间范围筛选并增量渲染前 500 个，更多的可以后续动态展示
     updateResults();
 });
 
-// 监听扫描进度
 window.electronAPI.onScanProgressTotal((total) => {
     countTotalSpan.textContent = total;
-    scanProgress.value = (total % 100); // 进度动画反馈
+    scanProgress.value = (total % 100);
 });
 
-// 监听扫描结束
 window.electronAPI.onScanFinished((finalTotal) => {
     countTotalSpan.textContent = finalTotal;
     scanProgress.value = 100;
-    console.log('全盘扫描结束，总计扫描文件:', finalTotal);
 });
 
+// --- 修复日期筛选逻辑 ---
 function updateResults() {
-    const startVal = dateStartInput.valueAsNumber;
-    const endVal = dateEndInput.valueAsNumber;
+    const startDate = dateStartInput.value; // "YYYY-MM-DD"
+    const endDate = dateEndInput.value;     // "YYYY-MM-DD"
 
-    // 快速过滤
-    const filtered = allFiles.filter(f => {
-        const fileTime = new Date(f.lastModified).setHours(0, 0, 0, 0);
-        if (!isNaN(startVal) && fileTime < startVal) return false;
-        if (!isNaN(endVal) && fileTime > endVal) return false;
-        return true;
+    currentFilteredFiles = allFiles.filter(file => {
+        // 获取本地时间字符串 YYYY-MM-DD
+        const dateObj = new Date(file.lastModified);
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        const fileDateStr = `${y}-${m}-${d}`;
+
+        let isMatch = true;
+        if (startDate && fileDateStr < startDate) isMatch = false;
+        if (endDate && fileDateStr > endDate) isMatch = false;
+
+        return isMatch;
     });
 
-    countMatchSpan.textContent = filtered.length;
+    countMatchSpan.textContent = currentFilteredFiles.length;
 
-    // 绘制结果（仅渲染前 200 个，防止浏览器绘图线程卡死）
-    // 对于 16TB 的万级数据，建议采用这种截断查看模式或引入 Virtual List
-    renderFileList(filtered.slice(0, 200), filtered.length > 200);
+    // 显示/隐藏导出按钮
+    exportBtn.style.display = currentFilteredFiles.length > 0 ? 'inline-flex' : 'none';
+
+    renderFileList(currentFilteredFiles.slice(0, 300), currentFilteredFiles.length > 300);
 }
+
+// --- 导出功能实现 ---
+exportBtn.addEventListener('click', async () => {
+    if (currentFilteredFiles.length === 0) return;
+
+    // 1. 选择目标文件夹
+    const targetFolder = await window.electronAPI.selectFolder();
+    if (!targetFolder) return;
+
+    // 2. 更改按钮状态
+    exportBtn.disabled = true;
+    exportBtn.textContent = '正在准备导出...';
+
+    // 3. 调用导出
+    const startTime = Date.now();
+    try {
+        const result = await window.electronAPI.exportFiles({
+            fileList: currentFilteredFiles,
+            targetFolder: targetFolder
+        });
+
+        alert(`导出完成！\n成功: ${result.success} 个\n失败: ${result.fail} 个\n耗时: ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+    } catch (err) {
+        alert('导出过程发生错误: ' + err.message);
+    } finally {
+        exportBtn.disabled = false;
+        exportBtn.innerHTML = '📤 导出结果';
+    }
+});
+
+// 监听导出进度
+window.electronAPI.onExportProgress(({ current, total }) => {
+    exportBtn.textContent = `导出中... (${current}/${total})`;
+});
 
 function renderFileList(list, hasMore) {
     if (list.length === 0 && allFiles.length === 0) {
-        resultsList.innerHTML = '<div class="empty-state"><p>正在等待全盘数据流...</p></div>';
+        resultsList.innerHTML = '<div class="empty-state"><p>正在扫描磁盘...</p></div>';
         return;
     }
-
     if (list.length === 0) {
         resultsList.innerHTML = '<div class="empty-state"><p>根据当前日期筛选未找到文件</p></div>';
         return;
@@ -95,49 +121,43 @@ function renderFileList(list, hasMore) {
         const card = document.createElement('div');
         card.className = 'file-card';
         card.style.animationDelay = `${(index % 20) * 0.02}s`;
-
         const dateStr = new Date(file.lastModified).toLocaleString('zh-CN');
         const sizeStr = (file.size / 1024 / 1024).toFixed(2) + ' MB';
 
         card.innerHTML = `
             <div class="file-info">
                 <h4>${file.name}</h4>
-                <p style="word-break: break-all; color: #64748b;">${file.path}</p>
-                <p>修改时间: ${dateStr} | 大小: ${sizeStr}</p>
+                <p style="word-break: break-all; color: #64748b; font-size: 0.75rem;">${file.path}</p>
+                <p>日期: ${dateStr} | 大小: ${sizeStr}</p>
             </div>
             <span class="tag">DCM</span>
         `;
         fragment.appendChild(card);
     });
 
-    if (hasMore) {
-        const moreTag = document.createElement('div');
-        moreTag.style.textAlign = 'center';
-        moreTag.style.padding = '1rem';
-        moreTag.style.color = '#94a3b8';
-        moreTag.innerHTML = `<em>... 还有 ${allFiles.length - 200} 个匹配文件，请通过上方缩小日期范围查看精细结果 ...</em>`;
-        fragment.appendChild(moreTag);
-    }
-
     resultsList.innerHTML = '';
     resultsList.appendChild(fragment);
+    if (hasMore) {
+        const more = document.createElement('p');
+        more.className = 'empty-state';
+        more.style.padding = '1rem';
+        more.innerHTML = `... 还有 ${currentFilteredFiles.length - 300} 个匹配文件尚未在预览中显示 ...`;
+        resultsList.appendChild(more);
+    }
 }
 
-// 监听日期变化实时筛选
 dateStartInput.addEventListener('change', updateResults);
 dateEndInput.addEventListener('change', updateResults);
 
 function resetUI() {
     allFiles = [];
-    resultsList.innerHTML = '<div class="empty-state"><p>已开启大规模全盘检索，请耐心等候第一批结果...</p></div>';
-    countTotalSpan.textContent = '0';
-    countMatchSpan.textContent = '0';
-    scanProgress.value = 0;
+    currentFilteredFiles = [];
+    resultsList.innerHTML = '<div class="empty-state"><p>正在启动全盘检索...</p></div>';
+    exportBtn.style.display = 'none';
 }
 
 clearBtn.addEventListener('click', () => {
-    window.electronAPI.stopScan(); // 先停止后台扫描
+    window.electronAPI.stopScan();
     resetUI();
     statsPanel.style.display = 'none';
-    resultsList.innerHTML = '<div class="empty-state"><p>列表已清空，并已停止后台扫描</p></div>';
 });
