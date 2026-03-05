@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DCM 资源管家 | 本地文件检索工具</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <meta name="description" content="一个高性能的本地 DICOM 文件检索工具，专为 Windows 用户设计。支持文件夹深度遍历及日期过滤。">
+</head>
+
+<body>
+    <div class="glass-bg"></div>
+    <main class="app-container">
+        <header>
+            <h1 id="main-title">DCM 资源管家</h1>
+            <p class="subtitle">让医疗影像管理更高效、更具美感</p>
+        </header>
+
+        <section class="controls glass-panel">
+            <div class="control-group">
+                <label for="date-start">开始日期:</label>
+                <input type="date" id="date-start" class="date-input">
+            </div>
+            <div class="control-group">
+                <label for="date-end">结束日期:</label>
+                <input type="date" id="date-end" class="date-input">
+            </div>
+            <button id="select-folder-btn" class="primary-btn">
+                <span class="icon">📁</span> 选择本地文件夹
+            </button>
+        </section>
+
+        <section class="stats-panel glass-panel" id="stats" style="display: none;">
+            <p>已扫描: <span id="count-total">0</span> 个文件 | 匹配: <span id="count-match">0</span> 个 DCM</p>
+            <progress id="scan-progress" value="0" max="100"></progress>
+        </section>
+
+        <section class="results-container">
+            <div class="list-header">
+                <h2>检索结果</h2>
+                <button id="clear-btn" class="secondary-btn">清空列表</button>
+            </div>
+            <div id="results-list" class="results-list glass-panel">
+                <div class="empty-state">
+                    <p>尚未选择文件夹，点击上方按钮开始探索</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2026 Antigravity DICOM Explorer. 极致交互体验.</p>
+    </footer>
+
+    <script src="renderer.js"></script>
+</body>
+
+</html>
