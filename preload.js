@@ -2,5 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     selectFolder: () => ipcRenderer.invoke('dialog:openDirectory'),
-    scanDirectory: (path) => ipcRenderer.invoke('scan-directory', path)
+    startScan: (path) => ipcRenderer.send('start-scan', path),
+    stopScan: () => ipcRenderer.send('stop-scan'),
+    onScanProgressTotal: (callback) => ipcRenderer.on('scan-progress-total', (event, count) => callback(count)),
+    onScanResultsBatch: (callback) => ipcRenderer.on('scan-results-batch', (event, batch) => callback(batch)),
+    onScanFinished: (callback) => ipcRenderer.on('scan-finished', (event, total) => callback(total))
 });
