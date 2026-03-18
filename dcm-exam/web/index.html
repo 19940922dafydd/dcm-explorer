@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DCM 资源管家 | 本地文件检索工具</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <meta name="description" content="一个高性能的本地 DICOM 文件检索工具。支持文件夹深度遍历及极速缓存验证。">
+</head>
+
+<body>
+    <div class="glass-bg"></div>
+    <main class="app-container">
+        <header>
+            <h1 id="main-title">DCM 资源管家</h1>
+            <p class="subtitle">极速缓存架构 · 医疗影像一键呈现</p>
+            <p class="folder-hint" id="folder-hint" style="display:none; color: var(--accent); margin-top: 0.5rem; font-size:0.9rem;">
+                📂 上次扫描路径: <span id="folder-path-text" style="color: #cbd5e1;"></span>
+            </p>
+        </header>
+
+        <section class="controls glass-panel">
+            <button id="select-folder-btn" class="primary-btn pulse-glow">
+                <span class="icon">📁</span> 选择本地文件夹或读取缓存
+            </button>
+            <div class="control-group">
+                <label for="date-start">开始日期:</label>
+                <input type="date" id="date-start" class="date-input">
+            </div>
+            <div class="control-group">
+                <label for="date-end">结束日期:</label>
+                <input type="date" id="date-end" class="date-input">
+            </div>
+            <div class="control-group search-group" style="flex-grow: 1; min-width: 250px;">
+                <label for="search-input">全局搜索:</label>
+                <input type="text" id="search-input" class="text-input" placeholder="按姓名、ID或设备等过滤..." autocomplete="off">
+            </div>
+            <div class="control-group">
+                <button id="analyze-btn" class="primary-btn pulse-glow" style="display: none; background: #8b5cf6;">
+                    <span class="icon">🔍</span> 分析所有 DICOM
+                </button>
+            </div>
+        </section>
+
+        <section class="stats-panel glass-panel" id="stats" style="display: none;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+                <p>正在扫描... 已找到: <span id="count-total" style="color: #fff; font-weight: bold;">0</span> 个文件</p>
+            </div>
+            <progress id="scan-progress" value="0" max="100"></progress>
+        </section>
+
+        <section class="results-container">
+            <div class="list-header">
+                <h2>检索结果 <span class="badge" id="count-match">0</span></h2>
+                <div class="button-group">
+                    <button id="export-btn" class="primary-btn"
+                        style="display: none; padding: 0.5rem 1.2rem; font-size: 0.85rem;">
+                        📤 导出选中项 (<span id="selected-count">0</span>)
+                    </button>
+                    <button id="clear-btn" class="secondary-btn">清空缓存与列表</button>
+                </div>
+            </div>
+            
+            <div class="table-container glass-panel">
+                <table class="dicom-table" id="dicom-table">
+                    <thead>
+                        <tr>
+                            <th class="checkbox-col">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" id="check-all">
+                                    <span class="checkmark"></span>
+                                </label>
+                            </th>
+                            <th>文件名</th>
+                            <th>姓名</th>
+                            <th>姓名 2</th>
+                            <th>年龄</th>
+                            <th>存入时间</th>
+                            <th>设备</th>
+                            <th>部位</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-tbody">
+                        <tr>
+                            <td colspan="8" class="empty-state">尚未选择文件夹，点击上方按钮开始探索</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- App Logic -->
+    <script src="app.js"></script>
+</body>
+
+</html>
