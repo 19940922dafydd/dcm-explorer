@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     startScan: (path) => ipcRenderer.send('start-scan', path),
     stopScan: () => ipcRenderer.send('stop-scan'),
     exportFiles: (data) => ipcRenderer.invoke('export-files', data),
+    readFile: (path) => ipcRenderer.invoke('read-file', path),
 
     onScanProgressTotal: (callback) => ipcRenderer.on('scan-progress-total', (event, count) => callback(count)),
     onScanResultsBatch: (callback) => ipcRenderer.on('scan-results-batch', (event, batch) => callback(batch)),

@@ -28,5 +28,8 @@
         "directories": {
             "output": "dist"
         }
+    },
+    "dependencies": {
+        "dicom-parser": "^1.8.21"
     }
 }
