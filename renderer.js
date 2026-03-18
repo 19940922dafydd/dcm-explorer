@@ -2,19 +2,6 @@
  * DCM 资源管家 - Renderer Logic
  */
 
-// --- Cornerstone Initialization ---
-cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
-cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
-cornerstoneWADOImageLoader.webWorkerManager.initialize({
-    maxWebWorkers: 1,
-    startWebWorkersOnDemand: true,
-    taskConfiguration: {
-        'decodeTask': {
-            initializeCodecsOnStartup: false
-        }
-    }
-});
-
 // DOM Elements
 const selectFolderBtn = document.getElementById('select-folder-btn');
 const dateStartInput = document.getElementById('date-start');
@@ -64,7 +51,7 @@ function resetUI() {
     displayedFiles = [];
     selectedPaths.clear();
     updateSelectionUI();
-    tbody.innerHTML = '<tr><td colspan="10" class="empty-state">正在急速扫描和读取缓存中...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">正在急速扫描和读取缓存中...</td></tr>';
 }
 
 // 接收主进程扫描数据
@@ -83,7 +70,7 @@ window.electronAPI.onScanFinished((finalTotal) => {
     scanProgress.value = 100;
     
     if (allFiles.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">未在所选文件夹中找到 DCM 文件</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">未在所选文件夹中找到 DCM 文件</td></tr>';
     } else {
         applyFilterAndRender();
     }
@@ -93,6 +80,24 @@ window.electronAPI.onScanFinished((finalTotal) => {
 searchInput.addEventListener('input', applyFilterAndRender);
 dateStartInput.addEventListener('change', applyFilterAndRender);
 dateEndInput.addEventListener('change', applyFilterAndRender);
+
+// 解码错误的GBK中文字符
+function fixGarbledText(text) {
+    if (!text) return '';
+    try {
+        let bytes = new Uint8Array(text.length);
+        for (let i = 0; i < text.length; i++) {
+            bytes[i] = text.charCodeAt(i) & 0xFF;
+        }
+        let decoder = new TextDecoder('gbk');
+        let decoded = decoder.decode(bytes);
+        if (/[\u4e00-\u9fa5]/.test(decoded)) {
+            return decoded;
+        }
+    } catch (e) {}
+    // 如果没有中文或者解析失败，尝试保留有用字符即可
+    return text;
+}
 
 function applyFilterAndRender() {
     const keyword = searchInput.value.toLowerCase().trim();
@@ -124,7 +129,7 @@ function applyFilterAndRender() {
 
 function renderTable() {
     if (displayedFiles.length === 0 && allFiles.length > 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">没有符合条件的结果</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">没有符合条件的结果</td></tr>';
         return;
     } else if (allFiles.length === 0) {
         return; 
@@ -141,8 +146,20 @@ function renderTable() {
         
         const tr = document.createElement('tr');
         
+        // 解析修正后的姓名与 SZYQ 代码
+        const rawName = fixGarbledText(d.patientName || '');
+        // 拆分逻辑：通常第一个词组是姓名，后面的是代码如 SZYQ021749
+        const parts = rawName.split(/\s+/).filter(Boolean);
+        let name1 = parts.length > 0 ? parts[0] : '-';
+        let name2 = '-';
+        if (parts.length > 1) {
+            // 如果剩余部分有包含数字字母的较长字符串，就作为 name2
+            const codeParts = parts.slice(1).filter(p => !['-','PX','px'].includes(p));
+            if (codeParts.length > 0) name2 = codeParts.join(' ');
+        }
+        
         // 格式化数据
-        const ageClean = d.patientAge ? d.patientAge.replace(/^0+/, '').replace('Y', '岁') : '-';
+        const ageClean = d.patientAge ? d.patientAge.replace(/^0+/, '').replace(/[Yy]/g, '岁') : '-';
         const dateClean = d.studyDate ? d.studyDate.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3') : '-';
         
         const isChecked = selectedPaths.has(file.path);
@@ -154,17 +171,12 @@ function renderTable() {
                     <span class="checkmark"></span>
                 </label>
             </td>
-            <td title="${d.patientName || '-'}">${d.patientName || '-'}</td>
-            <td title="${d.patientId || '-'}">${d.patientId || '-'}</td>
-            <td>${d.patientSex || '-'}</td>
+            <td title="${name1}">${name1}</td>
+            <td title="${name2}">${name2}</td>
             <td>${ageClean}</td>
             <td>${dateClean}</td>
             <td><span class="badge">${d.modality || 'DCM'}</span></td>
             <td>${d.bodyPart || '-'}</td>
-            <td title="${d.institution || '-'}">${d.institution || '-'}</td>
-            <td style="text-align: center;">
-                <button class="preview-btn" data-path="${file.path}" data-info="${d.patientName || 'Unknown'} - ${d.modality || ''}">预览</button>
-            </td>
         `;
         fragment.appendChild(tr);
     }
@@ -174,7 +186,7 @@ function renderTable() {
 
     if (displayedFiles.length > limit) {
         const moreTr = document.createElement('tr');
-        moreTr.innerHTML = `<td colspan="10" class="empty-state">... 还有 ${displayedFiles.length - limit} 条结果未显示，请使用全局搜索精确过滤 ...</td>`;
+        moreTr.innerHTML = `<td colspan="7" class="empty-state">... 还有 ${displayedFiles.length - limit} 条结果未显示，请使用全局搜索精确过滤 ...</td>`;
         tbody.appendChild(moreTr);
     }
     
@@ -194,15 +206,6 @@ function bindRowEvents() {
                 selectedPaths.delete(path);
             }
             updateSelectionUI();
-        });
-    });
-
-    const previewBtns = document.querySelectorAll('.preview-btn');
-    previewBtns.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const path = e.target.getAttribute('data-path');
-            const info = e.target.getAttribute('data-info');
-            openPreview(path, info);
         });
     });
 }
@@ -275,44 +278,4 @@ clearBtn.addEventListener('click', () => {
     statsPanel.style.display = 'none';
     searchInput.value = '';
     resetUI();
-});
-
-// --- 预览逻辑 ---
-const modal = document.getElementById('preview-modal');
-const closeModalBtn = document.getElementById('close-modal-btn');
-const dicomImageElement = document.getElementById('dicomImage');
-const modalSubtitle = document.getElementById('modal-subtitle');
-const loader = document.getElementById('loader');
-
-cornerstone.enable(dicomImageElement);
-
-async function openPreview(filePath, infoStr) {
-    modal.style.display = 'flex';
-    modalSubtitle.textContent = infoStr || '正在加载...';
-    loader.style.display = 'block';
-
-    try {
-        // 1. 通过 IPC 读取文件 Buffer
-        const buffer = await window.electronAPI.readFile(filePath);
-        
-        // 2. 将 Buffer 转为 File 对象
-        const file = new File([buffer], 'dicom.dcm');
-        
-        // 3. 将 File 对象加入 cornerstoneWADOImageLoader 的 fileManager 中获取 imageId
-        const imageId = cornerstoneWADOImageLoader.wadouri.fileManager.add(file);
-        
-        // 4. 加载并渲染影像
-        const image = await cornerstone.loadImage(imageId);
-        cornerstone.displayImage(dicomImageElement, image);
-        
-    } catch(err) {
-        console.error(err);
-        modalSubtitle.textContent = "加载影像失败: " + err.message;
-    } finally {
-        loader.style.display = 'none';
-    }
-}
-
-closeModalBtn.addEventListener('click', () => {
-    modal.style.display = 'none';
 });
