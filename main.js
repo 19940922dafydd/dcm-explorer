@@ -3,30 +3,6 @@ const path = require('path');
 const fs = require('fs');
 const dicomParser = require('dicom-parser');
 
-// --- Caching System ---
-let CACHE_FILE;
-let globalCache = {};
-
-function initCache() {
-    CACHE_FILE = path.join(app.getPath('userData'), 'dicom_cache.json');
-    try {
-        if (fs.existsSync(CACHE_FILE)) {
-            globalCache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-        }
-    } catch (e) {
-        console.error('Failed to read cache:', e);
-        globalCache = {};
-    }
-}
-
-function saveCache() {
-    try {
-        fs.writeFileSync(CACHE_FILE, JSON.stringify(globalCache), 'utf8');
-    } catch (e) {
-        console.error('Failed to save cache:', e);
-    }
-}
-
 async function parseDicomFile(filePath) {
     try {
         // Read the first 512KB for performance
@@ -83,7 +59,6 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-    initCache();
     createWindow();
 });
 
@@ -98,47 +73,32 @@ ipcMain.handle('dialog:openDirectory', async () => {
     return canceled ? null : filePaths[0];
 });
 
-// --- Core Scanning Logic with Cache ---
 let isCancelled = false;
+ipcMain.on('stop-scan', () => { isCancelled = true; });
 
-ipcMain.on('start-scan', async (event, rootPath) => {
+// --- Real-time Scanning Logic ---
+ipcMain.on('start-scan', async (event, { rootPath, startTs, endTs }) => {
     isCancelled = false;
-    
-    // Check if the directory is already fully cached
-    if (globalCache[rootPath]) {
-        const cachedFiles = Object.values(globalCache[rootPath]);
-        const BATCH_SIZE = 100;
-        for (let i = 0; i < cachedFiles.length; i += BATCH_SIZE) {
-            if (isCancelled) break;
-            mainWindow.webContents.send('scan-results-batch', cachedFiles.slice(i, i + BATCH_SIZE));
-            await new Promise(resolve => setTimeout(resolve, 10)); // Prevent blocking UI
-        }
-        mainWindow.webContents.send('scan-finished', cachedFiles.length);
-        return;
-    }
-
-    // New directory: Start full scan and build cache
-    globalCache[rootPath] = {};
     let batch = [];
     let totalScanned = 0;
     const BATCH_SIZE = 50;
-    const CONCURRENCY = 8;
+    const CONCURRENCY = 50; // just stat, can be high
     let promiseQueue = [];
 
     async function processFile(fullPath, entryName) {
         try {
             const stats = await fs.promises.stat(fullPath);
-            const dicomData = await parseDicomFile(fullPath);
-            
+            // Check date range
+            if (stats.mtimeMs < startTs || stats.mtimeMs > endTs) return;
+
             const fileData = {
                 name: entryName,
                 path: fullPath,
                 lastModified: stats.mtimeMs,
                 size: stats.size,
-                dicom: dicomData || {}
+                dicom: null // not parsed yet
             };
 
-            globalCache[rootPath][fullPath] = fileData;
             batch.push(fileData);
 
             if (batch.length >= BATCH_SIZE) {
@@ -147,7 +107,7 @@ ipcMain.on('start-scan', async (event, rootPath) => {
                 mainWindow.webContents.send('scan-results-batch', currentBatch);
             }
         } catch (e) {
-            // file access error, just skip
+            // skip on error
         }
     }
 
@@ -163,7 +123,7 @@ ipcMain.on('start-scan', async (event, rootPath) => {
                     await walk(fullPath);
                 } else {
                     totalScanned++;
-                    if (totalScanned % 500 === 0) mainWindow.webContents.send('scan-progress-total', totalScanned);
+                    if (totalScanned % 1000 === 0) mainWindow.webContents.send('scan-progress-total', totalScanned);
 
                     if (entry.name.toLowerCase().endsWith('.dcm')) {
                         const p = processFile(fullPath, entry.name);
@@ -187,11 +147,44 @@ ipcMain.on('start-scan', async (event, rootPath) => {
         mainWindow.webContents.send('scan-results-batch', batch);
     }
     
-    saveCache();
     mainWindow.webContents.send('scan-finished', totalScanned);
 });
 
-ipcMain.on('stop-scan', () => { isCancelled = true; });
+// --- Manual Analyze Logic ---
+ipcMain.on('analyze-dicom', async (event, filePaths) => {
+    isCancelled = false; // reuse variable to allow stopping
+    let batch = [];
+    const BATCH_SIZE = 10;
+    const CONCURRENCY = 8;
+    let promiseQueue = [];
+    let analyzedCount = 0;
+
+    for (let i = 0; i < filePaths.length; i++) {
+        if (isCancelled) break;
+        const filePath = filePaths[i];
+        
+        const p = parseDicomFile(filePath).then(dicomData => {
+            batch.push({ path: filePath, dicom: dicomData || {} });
+            analyzedCount++;
+            
+            if (batch.length >= BATCH_SIZE) {
+                mainWindow.webContents.send('analyze-results-batch', [...batch]);
+                batch = [];
+            }
+        });
+        
+        promiseQueue.push(p);
+        if (promiseQueue.length >= CONCURRENCY) {
+            await Promise.all(promiseQueue);
+            promiseQueue = [];
+        }
+    }
+    
+    if (promiseQueue.length > 0) await Promise.all(promiseQueue);
+    if (batch.length > 0) mainWindow.webContents.send('analyze-results-batch', batch);
+    
+    mainWindow.webContents.send('analyze-finished', analyzedCount);
+});
 
 // --- Multi-select Export Logic ---
 ipcMain.handle('export-files', async (event, { filePaths, targetFolder }) => {
@@ -222,14 +215,4 @@ ipcMain.handle('export-files', async (event, { filePaths, targetFolder }) => {
         }
     }
     return { success: successCount, fail: failCount };
-});
-
-// --- Read file for renderer preview ---
-ipcMain.handle('read-file', async (event, filePath) => {
-    try {
-        const buf = await fs.promises.readFile(filePath);
-        return buf;
-    } catch(e) {
-        throw e;
-    }
 });

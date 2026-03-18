@@ -39,6 +39,11 @@
                 <label for="search-input">全局搜索:</label>
                 <input type="text" id="search-input" class="text-input" placeholder="按姓名、ID或设备等过滤..." autocomplete="off">
             </div>
+            <div class="control-group">
+                <button id="analyze-btn" class="primary-btn pulse-glow" style="display: none; background: #8b5cf6;">
+                    <span class="icon">🔍</span> 分析所有 DICOM
+                </button>
+            </div>
         </section>
 
         <section class="stats-panel glass-panel" id="stats" style="display: none;">
@@ -70,6 +75,7 @@
                                     <span class="checkmark"></span>
                                 </label>
                             </th>
+                            <th>文件名</th>
                             <th>姓名</th>
                             <th>姓名 2</th>
                             <th>年龄</th>
@@ -80,7 +86,7 @@
                     </thead>
                     <tbody id="results-tbody">
                         <tr>
-                            <td colspan="7" class="empty-state">尚未选择文件夹，点击上方按钮开始探索</td>
+                            <td colspan="8" class="empty-state">尚未选择文件夹，点击上方按钮开始探索</td>
                         </tr>
                     </tbody>
                 </table>
