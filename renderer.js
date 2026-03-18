@@ -17,6 +17,8 @@ cornerstoneWADOImageLoader.webWorkerManager.initialize({
 
 // DOM Elements
 const selectFolderBtn = document.getElementById('select-folder-btn');
+const dateStartInput = document.getElementById('date-start');
+const dateEndInput = document.getElementById('date-end');
 const searchInput = document.getElementById('search-input');
 const clearBtn = document.getElementById('clear-btn');
 const exportBtn = document.getElementById('export-btn');
@@ -89,24 +91,32 @@ window.electronAPI.onScanFinished((finalTotal) => {
 
 // --- 过滤与渲染逻辑 ---
 searchInput.addEventListener('input', applyFilterAndRender);
+dateStartInput.addEventListener('change', applyFilterAndRender);
+dateEndInput.addEventListener('change', applyFilterAndRender);
 
 function applyFilterAndRender() {
     const keyword = searchInput.value.toLowerCase().trim();
+    const startDateStr = dateStartInput.value.replace(/-/g, ''); // "YYYYMMDD"
+    const endDateStr = dateEndInput.value.replace(/-/g, '');     // "YYYYMMDD"
     
-    if (!keyword) {
-        displayedFiles = allFiles;
-    } else {
-        displayedFiles = allFiles.filter(f => {
-            const d = f.dicom;
-            return (
-                f.name.toLowerCase().includes(keyword) ||
-                (d.patientName && d.patientName.toLowerCase().includes(keyword)) ||
-                (d.patientId && d.patientId.toLowerCase().includes(keyword)) ||
-                (d.modality && d.modality.toLowerCase().includes(keyword)) ||
-                (d.studyDate && d.studyDate.includes(keyword))
-            );
-        });
-    }
+    displayedFiles = allFiles.filter(f => {
+        const d = f.dicom || {};
+        const studyDate = d.studyDate || '';
+        
+        // 1. 日期过滤
+        if (startDateStr && studyDate < startDateStr) return false;
+        if (endDateStr && studyDate > endDateStr) return false;
+        
+        // 2. 关键字过滤
+        if (!keyword) return true;
+        
+        return (
+            f.name.toLowerCase().includes(keyword) ||
+            (d.patientName && d.patientName.toLowerCase().includes(keyword)) ||
+            (d.patientId && d.patientId.toLowerCase().includes(keyword)) ||
+            (d.modality && d.modality.toLowerCase().includes(keyword))
+        );
+    });
 
     countMatchSpan.textContent = displayedFiles.length;
     renderTable();
