@@ -101,16 +101,25 @@ function fixGarbledText(text) {
 
 function applyFilterAndRender() {
     const keyword = searchInput.value.toLowerCase().trim();
-    const startDateStr = dateStartInput.value.replace(/-/g, ''); // "YYYYMMDD"
-    const endDateStr = dateEndInput.value.replace(/-/g, '');     // "YYYYMMDD"
+    const startDateStr = dateStartInput.value;
+    const endDateStr = dateEndInput.value;
+    
+    let startTs = 0;
+    let endTs = Number.MAX_SAFE_INTEGER;
+    
+    if (startDateStr) {
+        startTs = new Date(`${startDateStr}T00:00:00`).getTime();
+    }
+    if (endDateStr) {
+        endTs = new Date(`${endDateStr}T23:59:59.999`).getTime();
+    }
     
     displayedFiles = allFiles.filter(f => {
         const d = f.dicom || {};
-        const studyDate = d.studyDate || '';
         
-        // 1. 日期过滤
-        if (startDateStr && studyDate < startDateStr) return false;
-        if (endDateStr && studyDate > endDateStr) return false;
+        // 1. 日期过滤 (使用文件最后修改时间)
+        if (f.lastModified < startTs) return false;
+        if (f.lastModified > endTs) return false;
         
         // 2. 关键字过滤
         if (!keyword) return true;
@@ -160,7 +169,14 @@ function renderTable() {
         
         // 格式化数据
         const ageClean = d.patientAge ? d.patientAge.replace(/^0+/, '').replace(/[Yy]/g, '岁') : '-';
-        const dateClean = d.studyDate ? d.studyDate.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3') : '-';
+        
+        const fileDateObj = new Date(f.lastModified);
+        const y = fileDateObj.getFullYear();
+        const m = String(fileDateObj.getMonth() + 1).padStart(2, '0');
+        const day = String(fileDateObj.getDate()).padStart(2, '0');
+        const h = String(fileDateObj.getHours()).padStart(2, '0');
+        const min = String(fileDateObj.getMinutes()).padStart(2, '0');
+        const dateClean = `${y}-${m}-${day} ${h}:${min}`;
         
         const isChecked = selectedPaths.has(file.path);
 
